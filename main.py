@@ -12,7 +12,8 @@ from config import (
     POLL_SECONDS, POLL_JITTER_MAX,
     STATE_FILE, DRY_RUN, LOG_LEVEL,
     TP_SPLITS, TP_SPLITS_AUTO, DCA_QTY_MULTS, INITIAL_SL_PCT,
-    SIGNAL_PARSER_VERSION
+    SIGNAL_PARSER_VERSION,
+    FOLLOW_TP_ENABLED, MAX_SL_DISTANCE_PCT
 )
 from bybit_v5 import BybitV5
 from discord_reader import DiscordReader
@@ -68,6 +69,7 @@ def main():
     log.info(f"Config: DRY_RUN={DRY_RUN}, LOG_LEVEL={LOG_LEVEL}")
     log.info(f"Config: TP_SPLITS={TP_SPLITS}, TP_SPLITS_AUTO={TP_SPLITS_AUTO}")
     log.info(f"Config: DCA_QTY_MULTS={DCA_QTY_MULTS}, INITIAL_SL_PCT={INITIAL_SL_PCT}%")
+    log.info(f"Config: FOLLOW_TP={FOLLOW_TP_ENABLED}, MAX_SL_DISTANCE={MAX_SL_DISTANCE_PCT}%")
 
     # Initialize database if enabled
     if db_export.is_enabled():

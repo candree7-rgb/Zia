@@ -58,6 +58,15 @@ MOVE_SL_TO_BE_ON_TP1 = _get_bool("MOVE_SL_TO_BE_ON_TP1","true")
 BE_BUFFER_PCT = _get_float("BE_BUFFER_PCT","0.15")  # Buffer for BE SL (0.15% = slight profit instead of exact entry)
 INITIAL_SL_PCT = _get_float("INITIAL_SL_PCT","19.0")  # SL distance from entry in %
 
+# Follow-TP: Move SL to previous TP level after each TP hit
+# Example: TP1 hit → SL to BE, TP2 hit → SL to TP1, TP3 hit → SL to TP2
+FOLLOW_TP_ENABLED = _get_bool("FOLLOW_TP_ENABLED", "false")
+FOLLOW_TP_BUFFER_PCT = _get_float("FOLLOW_TP_BUFFER_PCT", "0.1")  # Buffer above/below TP level
+
+# Max SL distance filter: Skip signals where SL is more than X% from entry
+# Set to 0 to disable this filter
+MAX_SL_DISTANCE_PCT = _get_float("MAX_SL_DISTANCE_PCT", "0")
+
 # TP_SPLITS: percentage of position to close at each TP level
 # Example: 30,30,30 means 90% total, leaving 10% as runner for trailing stop
 # For V2 signals with 3-5 TPs, use: 20,20,20,20,20 (adjust as needed)
