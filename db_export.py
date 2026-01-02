@@ -411,6 +411,38 @@ def get_stats(days: Optional[int] = None) -> Dict[str, Any]:
         _release_connection(conn)
 
 
+def get_active_trade_for_symbol(symbol: str) -> Optional[Dict[str, Any]]:
+    """
+    Check if there's an active trade for this symbol (from any bot).
+    Returns the active trade dict if found, None otherwise.
+
+    This is used for symbol locking when running multiple bots on same account.
+    """
+    conn = _get_connection()
+    if not conn:
+        return None
+
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id, symbol, bot_id, placed_at, filled_at
+                FROM trades
+                WHERE symbol = %s AND closed_at IS NULL
+                ORDER BY placed_at DESC
+                LIMIT 1
+                """,
+                (symbol,)
+            )
+            result = cur.fetchone()
+            return dict(result) if result else None
+    except Exception as e:
+        log.error(f"Failed to check active trade for {symbol}: {e}")
+        return None
+    finally:
+        _release_connection(conn)
+
+
 def is_enabled() -> bool:
     """Check if database export is configured."""
     if not PSYCOPG2_AVAILABLE and os.getenv("DATABASE_URL"):

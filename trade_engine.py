@@ -14,7 +14,7 @@ from config import (
     MOVE_SL_TO_BE_ON_TP1, BE_BUFFER_PCT,
     FOLLOW_TP_ENABLED, FOLLOW_TP_BUFFER_PCT, MAX_SL_DISTANCE_PCT,
     TRAIL_AFTER_TP_INDEX, TRAIL_DISTANCE_PCT, TRAIL_ACTIVATE_ON_TP,
-    DRY_RUN
+    DRY_RUN, BOT_ID
 )
 
 def _opposite_side(side: str) -> str:
@@ -243,6 +243,14 @@ class TradeEngine:
         symbol = sig["symbol"]
         side   = "Sell" if sig["side"] == "sell" else "Buy"
         trigger = float(sig["trigger"])
+
+        # Symbol Locking: Check if another bot is already trading this symbol
+        if db_export.is_enabled():
+            active_trade = db_export.get_active_trade_for_symbol(symbol)
+            if active_trade and active_trade.get("bot_id") != BOT_ID:
+                other_bot = active_trade.get("bot_id")
+                self.log.info(f"⏭️  SKIP {symbol} – already managed by bot '{other_bot}' (symbol locked)")
+                return None
 
         # ensure leverage set
         try:
