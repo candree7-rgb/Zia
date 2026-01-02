@@ -289,23 +289,45 @@ class TradeEngine:
         limit_price = self._round_price(limit_price, tick_size)
 
         qty = self.calc_base_qty(symbol, trigger)
-        td = self._trigger_direction(last, trigger_adj)
 
-        body = {
-            "category": CATEGORY,
-            "symbol": symbol,
-            "side": side,
-            "orderType": "Limit",
-            "qty": f"{qty:.10f}",
-            "price": f"{limit_price:.10f}",
-            "timeInForce": "GTC",
-            "triggerDirection": td,
-            "triggerPrice": f"{trigger_adj:.10f}",
-            "triggerBy": "LastPrice",
-            "reduceOnly": False,
-            "closeOnTrigger": False,
-            "orderLinkId": trade_id,
-        }
+        # Check if price is very close to trigger (within 0.5%)
+        # If so, place a direct limit order instead of conditional
+        price_diff_pct = abs(last - trigger_adj) / trigger_adj * 100
+        use_direct_limit = price_diff_pct < 0.5
+
+        if use_direct_limit:
+            # Price is at or very close to entry - place direct limit order
+            self.log.info(f"📍 Price at entry level ({price_diff_pct:.2f}% diff) - using direct limit order")
+            body = {
+                "category": CATEGORY,
+                "symbol": symbol,
+                "side": side,
+                "orderType": "Limit",
+                "qty": f"{qty:.10f}",
+                "price": f"{limit_price:.10f}",
+                "timeInForce": "GTC",
+                "reduceOnly": False,
+                "closeOnTrigger": False,
+                "orderLinkId": trade_id,
+            }
+        else:
+            # Price is away from entry - use conditional order
+            td = self._trigger_direction(last, trigger_adj)
+            body = {
+                "category": CATEGORY,
+                "symbol": symbol,
+                "side": side,
+                "orderType": "Limit",
+                "qty": f"{qty:.10f}",
+                "price": f"{limit_price:.10f}",
+                "timeInForce": "GTC",
+                "triggerDirection": td,
+                "triggerPrice": f"{trigger_adj:.10f}",
+                "triggerBy": "LastPrice",
+                "reduceOnly": False,
+                "closeOnTrigger": False,
+                "orderLinkId": trade_id,
+            }
 
         if DRY_RUN:
             self.log.info(f"DRY_RUN ENTRY {symbol}: {body}")
