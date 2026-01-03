@@ -1455,11 +1455,14 @@ class TradeEngine:
         tp_order_ids = trade.get("tp_order_ids", {})
 
         # Calculate splits
-        if TP_SPLITS_AUTO:
-            tp_count = len(new_tp_prices)
+        tp_count = len(new_tp_prices)
+        if TP_SPLITS_AUTO or tp_count > len(TP_SPLITS):
+            # Auto-calculate equal splits if enabled OR if we have more TPs than configured splits
             if tp_count > 0:
                 split_pct = 100.0 / tp_count
                 splits = [split_pct] * tp_count
+                if tp_count > len(TP_SPLITS):
+                    self.log.info(f"   Auto-splits for {tp_count} TPs: {split_pct:.1f}% each")
             else:
                 splits = TP_SPLITS
         else:
@@ -1485,6 +1488,7 @@ class TradeEngine:
 
             # Skip if no split for this TP
             if i >= len(splits) or splits[i] <= 0:
+                self.log.warning(f"   ⚠️ TP{tp_num} skipped: no split configured (splits={len(splits)}, TPs={tp_count})")
                 continue
 
             # Cancel existing TP order

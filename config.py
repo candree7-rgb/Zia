@@ -102,6 +102,7 @@ DCA_QTY_MULTS = [float(x) for x in _get("DCA_QTY_MULTS","1.5").split(",") if x.s
 # Timing
 POLL_SECONDS    = _get_int("POLL_SECONDS","15")
 POLL_JITTER_MAX = _get_int("POLL_JITTER_MAX","5")
+SIGNAL_UPDATE_INTERVAL_SEC = _get_int("SIGNAL_UPDATE_INTERVAL_SEC", "15")  # How often to re-check signals for SL/TP/DCA updates
 
 # Misc
 DRY_RUN     = _get_bool("DRY_RUN","true")

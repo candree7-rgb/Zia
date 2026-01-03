@@ -9,7 +9,7 @@ from config import (
     BYBIT_API_KEY, BYBIT_API_SECRET, BYBIT_TESTNET, BYBIT_DEMO, RECV_WINDOW,
     CATEGORY, QUOTE, LEVERAGE, RISK_PCT,
     MAX_CONCURRENT_TRADES, MAX_TRADES_PER_DAY, TC_MAX_LAG_SEC,
-    POLL_SECONDS, POLL_JITTER_MAX,
+    POLL_SECONDS, POLL_JITTER_MAX, SIGNAL_UPDATE_INTERVAL_SEC,
     STATE_FILE, DRY_RUN, LOG_LEVEL,
     TP_SPLITS, TP_SPLITS_AUTO, DCA_QTY_MULTS, INITIAL_SL_PCT,
     SIGNAL_PARSER_VERSION,
@@ -87,9 +87,8 @@ def main():
     HEARTBEAT_INTERVAL = 300  # Log heartbeat every 5 minutes
 
     # Signal update tracking
-    # First check after 10 seconds, then every 60 seconds
-    last_signal_update_check = time.time() - 50  # Will trigger first check after ~10 sec
-    SIGNAL_UPDATE_INTERVAL = 60  # Check for signal updates every 60 seconds
+    # First check after 5 seconds, then every SIGNAL_UPDATE_INTERVAL_SEC
+    last_signal_update_check = time.time() - (SIGNAL_UPDATE_INTERVAL_SEC - 5)  # Will trigger first check after ~5 sec
 
     # ----- Signal Update Checker -----
     def check_signal_updates():
@@ -267,8 +266,8 @@ def main():
             engine.check_position_alerts()    # Send Telegram alerts if position P&L crosses thresholds
             engine.log_daily_stats()          # Log stats once per day
 
-            # Check for signal updates (SL/DCA changes in Discord)
-            if time.time() - last_signal_update_check > SIGNAL_UPDATE_INTERVAL:
+            # Check for signal updates (SL/TP/DCA changes in Discord)
+            if time.time() - last_signal_update_check > SIGNAL_UPDATE_INTERVAL_SEC:
                 check_signal_updates()
                 last_signal_update_check = time.time()
 
