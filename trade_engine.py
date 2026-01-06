@@ -8,8 +8,8 @@ import telegram_alerts
 
 from config import (
     CATEGORY, ACCOUNT_TYPE, QUOTE, LEVERAGE, RISK_PCT,
-    ENTRY_EXPIRATION_MIN, ENTRY_TOO_FAR_PCT, ENTRY_TRIGGER_BUFFER_PCT, ENTRY_LIMIT_PRICE_OFFSET_PCT,
-    ENTRY_EXPIRATION_PRICE_PCT,
+    ENTRY_EXPIRATION_MIN, ENTRY_TOO_FAR_PCT, ENTRY_TOO_FAR_NO_TP_PCT,
+    ENTRY_TRIGGER_BUFFER_PCT, ENTRY_LIMIT_PRICE_OFFSET_PCT, ENTRY_EXPIRATION_PRICE_PCT,
     TP_SPLITS, TP_SPLITS_AUTO, DCA_QTY_MULTS, INITIAL_SL_PCT, FALLBACK_TP_PCT,
     MOVE_SL_TO_BE_ON_TP1, BE_BUFFER_PCT,
     FOLLOW_TP_ENABLED, FOLLOW_TP_BUFFER_PCT, MAX_SL_DISTANCE_PCT, MIN_SIGNAL_LEVERAGE,
@@ -189,9 +189,11 @@ class TradeEngine:
                 return last >= tp1
 
         # Fallback to percentage-based check if no TP1
+        # Use larger threshold since we don't know where TP1 actually is
+        fallback_pct = ENTRY_TOO_FAR_NO_TP_PCT if ENTRY_TOO_FAR_NO_TP_PCT > 0 else 15.0
         if side == "Sell":
-            return last <= trigger * (1 - ENTRY_TOO_FAR_PCT / 100.0)
-        return last >= trigger * (1 + ENTRY_TOO_FAR_PCT / 100.0)
+            return last <= trigger * (1 - fallback_pct / 100.0)
+        return last >= trigger * (1 + fallback_pct / 100.0)
 
     def _beyond_expiry_price(self, side: str, last: float, trigger: float) -> bool:
         """
