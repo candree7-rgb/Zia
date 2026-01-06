@@ -49,6 +49,7 @@ TC_MAX_LAG_SEC        = _get_int("TC_MAX_LAG_SEC","300")
 # Entry rules
 ENTRY_EXPIRATION_MIN         = _get_int("ENTRY_EXPIRATION_MIN","180")
 ENTRY_TOO_FAR_PCT            = _get_float("ENTRY_TOO_FAR_PCT","0.5")
+ENTRY_TOO_FAR_NO_TP_PCT      = _get_float("ENTRY_TOO_FAR_NO_TP_PCT","15.0")  # Fallback when TP1 unknown (more lenient)
 ENTRY_TRIGGER_BUFFER_PCT     = _get_float("ENTRY_TRIGGER_BUFFER_PCT","0.0")
 ENTRY_LIMIT_PRICE_OFFSET_PCT = _get_float("ENTRY_LIMIT_PRICE_OFFSET_PCT","0.0")
 ENTRY_EXPIRATION_PRICE_PCT   = _get_float("ENTRY_EXPIRATION_PRICE_PCT","0.6")
