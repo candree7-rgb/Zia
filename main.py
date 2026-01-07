@@ -13,7 +13,7 @@ from config import (
     STATE_FILE, DRY_RUN, LOG_LEVEL,
     TP_SPLITS, TP_SPLITS_AUTO, DCA_QTY_MULTS, INITIAL_SL_PCT,
     SIGNAL_PARSER_VERSION,
-    FOLLOW_TP_ENABLED, MAX_SL_DISTANCE_PCT
+    FOLLOW_TP_ENABLED, MAX_SL_DISTANCE_PCT, CAP_SL_DISTANCE_PCT
 )
 from bybit_v5 import BybitV5
 from discord_reader import DiscordReader
@@ -165,6 +165,21 @@ def main():
 
                 if new_sl and new_sl != old_sl and not tr.get("sl_moved_to_be"):
                     log.info(f"🔄 Signal SL updated for {tr['symbol']}: {old_sl} → {new_sl}")
+
+                    # Apply SL cap if configured
+                    entry = tr.get("trigger") or tr.get("entry_price")
+                    if CAP_SL_DISTANCE_PCT > 0 and entry:
+                        sl_distance = abs(float(new_sl) - float(entry)) / float(entry) * 100
+                        if sl_distance > CAP_SL_DISTANCE_PCT:
+                            cap_pct = CAP_SL_DISTANCE_PCT / 100.0
+                            old_new_sl = new_sl
+                            side = tr.get("side")
+                            if side == "Sell":  # Short: SL is above entry
+                                new_sl = float(entry) * (1 + cap_pct)
+                            else:  # Long: SL is below entry
+                                new_sl = float(entry) * (1 - cap_pct)
+                            log.info(f"📍 SL capped: {old_new_sl} → {new_sl} ({sl_distance:.1f}% → {CAP_SL_DISTANCE_PCT}%)")
+
                     tr["sl_price"] = new_sl  # Always update trade data
                     if is_open:
                         # Only update on Bybit if trade is already open

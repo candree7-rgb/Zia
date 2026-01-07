@@ -12,7 +12,7 @@ from config import (
     ENTRY_TRIGGER_BUFFER_PCT, ENTRY_LIMIT_PRICE_OFFSET_PCT, ENTRY_EXPIRATION_PRICE_PCT,
     TP_SPLITS, TP_SPLITS_AUTO, DCA_QTY_MULTS, INITIAL_SL_PCT, FALLBACK_TP_PCT,
     MOVE_SL_TO_BE_ON_TP1, BE_BUFFER_PCT,
-    FOLLOW_TP_ENABLED, FOLLOW_TP_BUFFER_PCT, MAX_SL_DISTANCE_PCT, MIN_SIGNAL_LEVERAGE,
+    FOLLOW_TP_ENABLED, FOLLOW_TP_BUFFER_PCT, MAX_SL_DISTANCE_PCT, CAP_SL_DISTANCE_PCT, MIN_SIGNAL_LEVERAGE,
     TRAIL_AFTER_TP_INDEX, TRAIL_DISTANCE_PCT, TRAIL_ACTIVATE_ON_TP,
     DRY_RUN, BOT_ID
 )
@@ -430,6 +430,19 @@ class TradeEngine:
             sl_price = entry * (1 + sl_pct) if side == "Sell" else entry * (1 - sl_pct)
             sl_price = self._round_price(sl_price, tick_size)
             self.log.info(f"📍 SL at {INITIAL_SL_PCT}% from entry: {sl_price}")
+
+        # Apply SL cap if configured
+        if CAP_SL_DISTANCE_PCT > 0:
+            sl_distance = abs(sl_price - entry) / entry * 100
+            if sl_distance > CAP_SL_DISTANCE_PCT:
+                cap_pct = CAP_SL_DISTANCE_PCT / 100.0
+                old_sl = sl_price
+                if side == "Sell":  # Short: SL is above entry
+                    sl_price = entry * (1 + cap_pct)
+                else:  # Long: SL is below entry
+                    sl_price = entry * (1 - cap_pct)
+                sl_price = self._round_price(sl_price, tick_size)
+                self.log.info(f"📍 SL capped: {old_sl} → {sl_price} ({sl_distance:.1f}% → {CAP_SL_DISTANCE_PCT}%)")
 
         tp_prices: List[float] = trade.get("tp_prices") or []
 
