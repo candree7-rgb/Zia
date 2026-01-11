@@ -229,18 +229,54 @@ def main():
                         tr["tp_prices"] = new_tps
                         log.info(f"📝 TPs saved for {tr['symbol']} (will apply on entry fill)")
 
-                # Check if DCA added (was empty, now has value)
+                # Check if DCA changed (added, modified, or removed)
                 new_dcas = sig.get("dca_prices") or []
                 old_dcas = tr.get("dca_prices") or []
 
-                if new_dcas and not old_dcas:
-                    log.info(f"🔄 Signal DCA added for {tr['symbol']}: {new_dcas}")
-                    tr["dca_prices"] = new_dcas  # Always update trade data
-                    if is_open and not tr.get("dca_orders_placed"):
-                        # Only place DCA orders if trade is already open
-                        engine.place_dca_orders(tr)
-                    elif not is_open:
-                        log.info(f"📝 DCA saved for {tr['symbol']} (will place on entry fill)")
+                dcas_changed = False
+                if new_dcas != old_dcas:
+                    # Check if actually different (compare values)
+                    if len(new_dcas) != len(old_dcas):
+                        dcas_changed = True
+                    elif new_dcas and old_dcas:
+                        # Same length, check if values differ
+                        if any(abs(float(new_dcas[i]) - float(old_dcas[i])) > 0.0000001 for i in range(len(new_dcas))):
+                            dcas_changed = True
+                    elif new_dcas or old_dcas:
+                        # One is empty, other is not
+                        dcas_changed = True
+
+                if dcas_changed:
+                    if new_dcas and not old_dcas:
+                        # DCAs added (was empty, now has values)
+                        log.info(f"🔄 Signal DCA added for {tr['symbol']}: {new_dcas}")
+                        tr["dca_prices"] = new_dcas
+                        if is_open and not tr.get("dca_orders_placed"):
+                            engine.place_dca_orders(tr)
+                        elif not is_open:
+                            log.info(f"📝 DCA saved for {tr['symbol']} (will place on entry fill)")
+
+                    elif not new_dcas and old_dcas:
+                        # DCAs removed (had values, now empty)
+                        log.info(f"🔄 Signal DCA removed for {tr['symbol']}: {old_dcas} → []")
+                        tr["dca_prices"] = []
+                        if is_open and tr.get("dca_orders_placed"):
+                            engine._cancel_dca_orders(tr)
+                            tr["dca_orders_placed"] = False
+                            log.info(f"🗑️ DCA orders cancelled for {tr['symbol']}")
+
+                    else:
+                        # DCAs changed (had values, now different values)
+                        log.info(f"🔄 Signal DCA changed for {tr['symbol']}: {old_dcas} → {new_dcas}")
+                        tr["dca_prices"] = new_dcas
+                        if is_open:
+                            # Cancel old DCAs and place new ones
+                            if tr.get("dca_orders_placed"):
+                                engine._cancel_dca_orders(tr)
+                                tr["dca_orders_placed"] = False
+                            engine.place_dca_orders(tr)
+                        else:
+                            log.info(f"📝 DCA saved for {tr['symbol']} (will place on entry fill)")
 
             except Exception as e:
                 log.debug(f"Signal update check failed for {tr.get('symbol')}: {e}")
