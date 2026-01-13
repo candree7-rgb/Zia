@@ -827,10 +827,10 @@ class TradeEngine:
                             new_sl = entry * (1 - BE_BUFFER_PCT / 100.0)
                         else:  # LONG
                             new_sl = entry * (1 + BE_BUFFER_PCT / 100.0)
-                    self._move_sl(tr["symbol"], new_sl)
-                    tr["sl_moved_to_be"] = True
-                    tr["last_sl_level"] = 0  # 0 = Entry/BE
-                    self.log.info(f"✅ SL -> BE {tr['symbol']} @ {new_sl:.6f} (TP1 hit)")
+                    if self._move_sl(tr["symbol"], new_sl, side):
+                        tr["sl_moved_to_be"] = True
+                        tr["last_sl_level"] = 0  # 0 = Entry/BE
+                        self.log.info(f"✅ SL -> BE {tr['symbol']} @ {new_sl:.6f} (TP1 hit)")
                     # Cancel DCA orders on TP1
                     self._cancel_dca_orders(tr)
 
@@ -847,22 +847,23 @@ class TradeEngine:
                     else:
                         new_sl = prev_tp
 
-                    self._move_sl(tr["symbol"], new_sl)
-                    tr["last_sl_level"] = tp_num - 1
-                    self.log.info(f"✅ SL -> TP{tp_num-1} {tr['symbol']} @ {new_sl:.6f} (TP{tp_num} hit)")
+                    if self._move_sl(tr["symbol"], new_sl, side):
+                        tr["last_sl_level"] = tp_num - 1
+                        self.log.info(f"✅ SL -> TP{tp_num-1} {tr['symbol']} @ {new_sl:.6f} (TP{tp_num} hit)")
 
             elif MOVE_SL_TO_BE_ON_TP1 and tp_num == 1 and not tr.get("sl_moved_to_be"):
                 # Legacy behavior: only move to BE on TP1
                 be = float(tr.get("avg_entry") or tr.get("entry_price") or tr.get("trigger"))
                 # Add buffer so BE is slightly in profit (covers fees)
+                order_side = tr.get("order_side")
                 if BE_BUFFER_PCT > 0:
-                    if tr.get("order_side") == "Sell":  # SHORT
+                    if order_side == "Sell":  # SHORT
                         be = be * (1 - BE_BUFFER_PCT / 100.0)
                     else:  # LONG
                         be = be * (1 + BE_BUFFER_PCT / 100.0)
-                self._move_sl(tr["symbol"], be)
-                tr["sl_moved_to_be"] = True
-                self.log.info(f"✅ SL -> BE {tr['symbol']} @ {be} (buffer {BE_BUFFER_PCT}%)")
+                if self._move_sl(tr["symbol"], be, order_side):
+                    tr["sl_moved_to_be"] = True
+                    self.log.info(f"✅ SL -> BE {tr['symbol']} @ {be} (buffer {BE_BUFFER_PCT}%)")
 
                 # Cancel all pending DCA orders when TP1 hits
                 self._cancel_dca_orders(tr)
@@ -873,10 +874,31 @@ class TradeEngine:
                 tr["trailing_started"] = True
                 self.log.info(f"✅ TRAILING STARTED {tr['symbol']} after TP{tp_num}")
 
-    def _move_sl(self, symbol: str, sl_price: float, max_retries: int = 3) -> bool:
-        """Move SL with retry logic for volatile markets."""
+    def _move_sl(self, symbol: str, sl_price: float, side: str = None, max_retries: int = 3) -> bool:
+        """Move SL with retry logic for volatile markets.
+
+        If side is provided, validates that SL price is valid given current market price.
+        For LONG: SL must be below current price
+        For SHORT: SL must be above current price
+        """
         rules = self._get_instrument_rules(symbol)
         sl_price = self._round_price(sl_price, rules["tick_size"])
+
+        # Pre-check: validate SL is on correct side of current price
+        if side:
+            try:
+                current_price = self.bybit.last_price(CATEGORY, symbol)
+                if side == "Buy" and sl_price >= current_price:
+                    # LONG: SL must be BELOW current price
+                    self.log.warning(f"⚠️ Cannot set SL={sl_price} for {symbol} LONG - price ({current_price}) already below SL target")
+                    return False
+                elif side == "Sell" and sl_price <= current_price:
+                    # SHORT: SL must be ABOVE current price
+                    self.log.warning(f"⚠️ Cannot set SL={sl_price} for {symbol} SHORT - price ({current_price}) already above SL target")
+                    return False
+            except Exception as e:
+                self.log.debug(f"Could not validate SL price for {symbol}: {e}")
+
         body = {
             "category": CATEGORY,
             "symbol": symbol,
@@ -1041,7 +1063,7 @@ class TradeEngine:
                         be = be * (1 - BE_BUFFER_PCT / 100.0)
                     else:  # LONG
                         be = be * (1 + BE_BUFFER_PCT / 100.0)
-                if self._move_sl(symbol, be):
+                if self._move_sl(symbol, be, tr.get("order_side")):
                     tr["sl_moved_to_be"] = True
                     # Also track TP1 as filled if not already
                     if 1 not in tr.get("tp_fills_list", []):
@@ -1677,7 +1699,7 @@ class TradeEngine:
                 new_sl = first_dca * (1 - dca_buffer_pct)
             new_sl = self._round_price(new_sl, tick_size)
             self.log.info(f"📍 Setting SL at DCA+4% for {symbol}: {new_sl} (DCA1: {first_dca})")
-            if self._move_sl(symbol, new_sl):
+            if self._move_sl(symbol, new_sl, side):
                 trade["sl_price"] = new_sl
 
         return success
