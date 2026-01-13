@@ -378,6 +378,37 @@ def main():
             # entry-fill fallback (polling) and post-orders placement
             for tid, tr in list(st.get("open_trades", {}).items()):
                 if tr.get("status") == "pending":
+                    # Real-time check: cancel if price already past TP1
+                    tp_prices = tr.get("tp_prices") or []
+                    if tp_prices:
+                        try:
+                            tp1 = float(tp_prices[0])
+                            side = tr.get("order_side")
+                            current_price = bybit.last_price(CATEGORY, tr["symbol"])
+                            should_cancel = False
+
+                            if side == "Buy" and current_price >= tp1:
+                                should_cancel = True
+                                log.warning(f"⚠️ {tr['symbol']} price ({current_price:.6f}) >= TP1 ({tp1}) - cancelling pending LONG")
+                            elif side == "Sell" and current_price <= tp1:
+                                should_cancel = True
+                                log.warning(f"⚠️ {tr['symbol']} price ({current_price:.6f}) <= TP1 ({tp1}) - cancelling pending SHORT")
+
+                            if should_cancel:
+                                entry_oid = tr.get("entry_order_id")
+                                if entry_oid and entry_oid != "DRY_RUN":
+                                    try:
+                                        engine.cancel_entry_order(tr["symbol"], entry_oid)
+                                        log.info(f"🗑️ Cancelled entry order for {tr['symbol']} (price past TP1)")
+                                    except Exception as e:
+                                        log.debug(f"Could not cancel entry: {e}")
+                                tr["status"] = "cancelled"
+                                tr["exit_reason"] = "price_past_tp1"
+                                tr["closed_ts"] = time.time()
+                                continue  # Skip further processing for this trade
+                        except Exception as e:
+                            log.debug(f"Could not check TP1 price for {tr['symbol']}: {e}")
+
                     # if position opened but ws missed: detect via positions size > 0
                     sz, avg = engine.position_size_avg(tr["symbol"])
                     if sz > 0 and avg > 0:
