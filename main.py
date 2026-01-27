@@ -128,6 +128,37 @@ def main():
                     log.warning(f"   {tr.get('symbol')}: Empty message text")
                     continue
 
+                # Check if TP1 already HIT while entry still pending (ETC format)
+                # This catches fast moves where TP1 was reached before our entry triggered
+                # Patterns: "✅ TP1:" or "TP1: ... HIT"
+                if tr.get("status") == "pending":
+                    tp1_hit = False
+                    # Check for checkmark before TP1
+                    if "✅ TP1" in txt or "✅TP1" in txt:
+                        tp1_hit = True
+                    # Check for "HIT" after TP1 value
+                    elif "TP1:" in txt.upper() and "HIT" in txt.upper():
+                        # Make sure HIT comes after TP1
+                        tp1_pos = txt.upper().find("TP1:")
+                        hit_pos = txt.upper().find("HIT")
+                        if hit_pos > tp1_pos:
+                            tp1_hit = True
+
+                    if tp1_hit:
+                        log.warning(f"⚠️ TP1 already HIT for {tr['symbol']} - cancelling pending entry")
+                        entry_oid = tr.get("entry_order_id")
+                        if entry_oid and entry_oid != "DRY_RUN":
+                            try:
+                                engine.cancel_entry(tr["symbol"], entry_oid)
+                                log.info(f"🗑️ Cancelled entry order for {tr['symbol']} (TP1 already hit)")
+                            except Exception as e:
+                                log.debug(f"Could not cancel entry: {e}")
+                        tr["status"] = "cancelled"
+                        tr["exit_reason"] = "tp1_already_hit"
+                        tr["closed_ts"] = time.time()
+                        log.info(f"✅ Trade {tr['symbol']} cancelled - TP1 was already reached")
+                        continue  # Skip other updates for this trade
+
                 # Check if trade was CANCELLED in Discord signal
                 # This handles: "❌ TRADE CANCELLED", "TRADE CANCELLED", "Trade closed without entry"
                 if "TRADE CANCELLED" in txt.upper() or "CLOSED WITHOUT ENTRY" in txt.upper():
