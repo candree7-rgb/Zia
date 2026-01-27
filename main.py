@@ -9,7 +9,7 @@ from config import (
     BYBIT_API_KEY, BYBIT_API_SECRET, BYBIT_TESTNET, BYBIT_DEMO, RECV_WINDOW,
     CATEGORY, QUOTE, LEVERAGE, RISK_PCT,
     MAX_CONCURRENT_TRADES, MAX_TRADES_PER_DAY, TC_MAX_LAG_SEC,
-    POLL_SECONDS, POLL_JITTER_MAX, SIGNAL_UPDATE_INTERVAL_SEC,
+    POLL_SECONDS, POLL_JITTER_MAX, SIGNAL_UPDATE_INTERVAL_SEC, SIGNAL_UPDATE_INTERVAL_OPEN_SEC,
     STATE_FILE, DRY_RUN, LOG_LEVEL,
     TP_SPLITS, TP_SPLITS_AUTO, DCA_QTY_MULTS, INITIAL_SL_PCT,
     SIGNAL_PARSER_VERSION, ALLOWED_CALLERS,
@@ -424,7 +424,10 @@ def main():
             engine.log_daily_stats()          # Log stats once per day
 
             # Check for signal updates (SL/TP/DCA changes in Discord)
-            if time.time() - last_signal_update_check > SIGNAL_UPDATE_INTERVAL_SEC:
+            # Use faster interval if there are OPEN trades (for quick TRADE CLOSED detection)
+            has_open_trades = any(tr.get("status") == "open" for tr in st.get("open_trades", {}).values())
+            update_interval = SIGNAL_UPDATE_INTERVAL_OPEN_SEC if has_open_trades else SIGNAL_UPDATE_INTERVAL_SEC
+            if time.time() - last_signal_update_check > update_interval:
                 check_signal_updates()
                 last_signal_update_check = time.time()
 
