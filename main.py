@@ -148,6 +148,40 @@ def main():
                     log.info(f"✅ Trade {tr['symbol']} marked as cancelled")
                     continue  # Skip other updates for this trade
 
+                # Check if pending order should be cancelled (price already past TP1)
+                if tr.get("status") == "pending":
+                    tp_prices = tr.get("tp_prices") or []
+                    if tp_prices:
+                        tp1 = float(tp_prices[0])
+                        side = tr.get("order_side")
+                        try:
+                            current_price = bybit.last_price(CATEGORY, tr["symbol"])
+                            should_cancel = False
+
+                            if side == "Buy" and current_price >= tp1:
+                                # LONG: Price already at/above TP1
+                                should_cancel = True
+                                log.warning(f"⚠️ {tr['symbol']} price ({current_price}) already at/past TP1 ({tp1}) - cancelling pending order")
+                            elif side == "Sell" and current_price <= tp1:
+                                # SHORT: Price already at/below TP1
+                                should_cancel = True
+                                log.warning(f"⚠️ {tr['symbol']} price ({current_price}) already at/past TP1 ({tp1}) - cancelling pending order")
+
+                            if should_cancel:
+                                entry_oid = tr.get("entry_order_id")
+                                if entry_oid and entry_oid != "DRY_RUN":
+                                    try:
+                                        engine.cancel_entry_order(tr["symbol"], entry_oid)
+                                        log.info(f"🗑️ Cancelled entry order for {tr['symbol']} (price past TP1)")
+                                    except Exception as e:
+                                        log.debug(f"Could not cancel entry: {e}")
+                                tr["status"] = "cancelled"
+                                tr["exit_reason"] = "price_past_tp1"
+                                tr["closed_ts"] = time.time()
+                                continue  # Skip other updates for this trade
+                        except Exception as e:
+                            log.debug(f"Could not check price for {tr['symbol']}: {e}")
+
                 # Parse only SL/DCA from updated signal (doesn't require "NEW SIGNAL")
                 sig = parse_signal_update(txt)
 
@@ -202,7 +236,7 @@ def main():
                     tr["sl_price"] = new_sl  # Always update trade data
                     if is_open:
                         # Only update on Bybit if trade is already open
-                        if engine._move_sl(tr["symbol"], new_sl):
+                        if engine._move_sl(tr["symbol"], new_sl, tr.get("order_side")):
                             log.info(f"✅ SL updated on Bybit: {tr['symbol']} @ {new_sl}")
                     else:
                         log.info(f"📝 SL saved for {tr['symbol']} (will apply on entry fill)")
@@ -344,6 +378,37 @@ def main():
             # entry-fill fallback (polling) and post-orders placement
             for tid, tr in list(st.get("open_trades", {}).items()):
                 if tr.get("status") == "pending":
+                    # Real-time check: cancel if price already past TP1
+                    tp_prices = tr.get("tp_prices") or []
+                    if tp_prices:
+                        try:
+                            tp1 = float(tp_prices[0])
+                            side = tr.get("order_side")
+                            current_price = bybit.last_price(CATEGORY, tr["symbol"])
+                            should_cancel = False
+
+                            if side == "Buy" and current_price >= tp1:
+                                should_cancel = True
+                                log.warning(f"⚠️ {tr['symbol']} price ({current_price:.6f}) >= TP1 ({tp1}) - cancelling pending LONG")
+                            elif side == "Sell" and current_price <= tp1:
+                                should_cancel = True
+                                log.warning(f"⚠️ {tr['symbol']} price ({current_price:.6f}) <= TP1 ({tp1}) - cancelling pending SHORT")
+
+                            if should_cancel:
+                                entry_oid = tr.get("entry_order_id")
+                                if entry_oid and entry_oid != "DRY_RUN":
+                                    try:
+                                        engine.cancel_entry_order(tr["symbol"], entry_oid)
+                                        log.info(f"🗑️ Cancelled entry order for {tr['symbol']} (price past TP1)")
+                                    except Exception as e:
+                                        log.debug(f"Could not cancel entry: {e}")
+                                tr["status"] = "cancelled"
+                                tr["exit_reason"] = "price_past_tp1"
+                                tr["closed_ts"] = time.time()
+                                continue  # Skip further processing for this trade
+                        except Exception as e:
+                            log.debug(f"Could not check TP1 price for {tr['symbol']}: {e}")
+
                     # if position opened but ws missed: detect via positions size > 0
                     sz, avg = engine.position_size_avg(tr["symbol"])
                     if sz > 0 and avg > 0:
