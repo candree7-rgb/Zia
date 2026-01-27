@@ -155,6 +155,52 @@ def main():
                     log.info(f"✅ Trade {tr['symbol']} marked as cancelled")
                     continue  # Skip other updates for this trade
 
+                # Check if trade was CLOSED by caller (ETC format: "TRADE CLOSED - x/y TPs hit")
+                # This triggers a market close of the position
+                if "TRADE CLOSED" in txt.upper() and tr.get("status") == "open":
+                    log.warning(f"📉 Signal CLOSED for {tr['symbol']} - closing position via market order")
+
+                    # Cancel all pending TP/DCA orders first
+                    engine._cancel_all_trade_orders(tr)
+
+                    # Close position with market order
+                    try:
+                        size, _ = engine.position_size_avg(tr["symbol"])
+                        if size > 0:
+                            # Determine close side (opposite of position)
+                            pos_side = tr.get("pos_side", "Long")
+                            close_side = "Sell" if pos_side == "Long" else "Buy"
+
+                            close_order = {
+                                "category": CATEGORY,
+                                "symbol": tr["symbol"],
+                                "side": close_side,
+                                "orderType": "Market",
+                                "qty": str(size),
+                                "reduceOnly": True,
+                                "timeInForce": "GTC",
+                            }
+
+                            if not DRY_RUN:
+                                resp = bybit.place_order(close_order)
+                                if resp.get("retCode") == 0:
+                                    log.info(f"✅ Position closed for {tr['symbol']} via market order")
+                                else:
+                                    log.error(f"Failed to close position: {resp}")
+                            else:
+                                log.info(f"[DRY_RUN] Would close {size} {tr['symbol']} with market order")
+                        else:
+                            log.info(f"Position already closed for {tr['symbol']}")
+                    except Exception as e:
+                        log.error(f"Error closing position for {tr['symbol']}: {e}")
+
+                    # Mark trade as closed
+                    tr["status"] = "closed"
+                    tr["exit_reason"] = "signal_closed"
+                    tr["closed_ts"] = time.time()
+                    log.info(f"✅ Trade {tr['symbol']} marked as closed (signal)")
+                    continue  # Skip other updates for this trade
+
                 # Check if pending order should be cancelled (price already past TP1)
                 if tr.get("status") == "pending":
                     tp_prices = tr.get("tp_prices") or []
