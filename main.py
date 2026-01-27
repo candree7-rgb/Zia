@@ -12,7 +12,7 @@ from config import (
     POLL_SECONDS, POLL_JITTER_MAX, SIGNAL_UPDATE_INTERVAL_SEC,
     STATE_FILE, DRY_RUN, LOG_LEVEL,
     TP_SPLITS, TP_SPLITS_AUTO, DCA_QTY_MULTS, INITIAL_SL_PCT,
-    SIGNAL_PARSER_VERSION,
+    SIGNAL_PARSER_VERSION, ALLOWED_CALLERS,
     FOLLOW_TP_ENABLED, MAX_SL_DISTANCE_PCT, CAP_SL_DISTANCE_PCT
 )
 from bybit_v5 import BybitV5
@@ -21,6 +21,11 @@ from discord_reader import DiscordReader
 # Import signal parser based on version
 if SIGNAL_PARSER_VERSION == "v2":
     from signal_parser_v2 import parse_signal, parse_signal_update, signal_hash
+elif SIGNAL_PARSER_VERSION == "etc":
+    from signal_parser_etc import parse_signal as _parse_signal_etc, parse_signal_update, signal_hash, parse_dca_triggered
+    # Wrap parse_signal to always include allowed_callers
+    def parse_signal(text, quote="USDT"):
+        return _parse_signal_etc(text, quote, allowed_callers=ALLOWED_CALLERS)
 else:
     from signal_parser import parse_signal, parse_signal_update, signal_hash
 
@@ -63,6 +68,8 @@ def main():
     log.info("Discord → Bybit Bot (One-way)" + mode_str)
     log.info("="*58)
     log.info(f"Config: SIGNAL_PARSER={SIGNAL_PARSER_VERSION.upper()}")
+    if ALLOWED_CALLERS:
+        log.info(f"Config: ALLOWED_CALLERS={ALLOWED_CALLERS}")
     log.info(f"Config: CATEGORY={CATEGORY}, QUOTE={QUOTE}, LEVERAGE={LEVERAGE}x")
     log.info(f"Config: RISK_PCT={RISK_PCT}%, MAX_CONCURRENT={MAX_CONCURRENT_TRADES}, MAX_DAILY={MAX_TRADES_PER_DAY}")
     log.info(f"Config: POLL_SECONDS={POLL_SECONDS}, TC_MAX_LAG_SEC={TC_MAX_LAG_SEC}")
