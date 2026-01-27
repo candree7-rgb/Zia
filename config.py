@@ -29,8 +29,14 @@ ACCOUNT_TYPE     = _get("ACCOUNT_TYPE","UNIFIED")  # UNIFIED / CONTRACT etc (dep
 # Bot identification (for multi-bot dashboard support)
 BOT_ID = _get("BOT_ID", "ao")  # Unique identifier for this bot instance
 
-# Signal Parser Version: "v1" = original embed format, "v2" = plain text format
+# Signal Parser Version: "v1" = original embed format, "v2" = plain text format, "etc" = ETC Trade format
 SIGNAL_PARSER_VERSION = _get("SIGNAL_PARSER_VERSION", "v1").lower()
+
+# Allowed callers filter (comma-separated list of caller names)
+# Only signals from these callers will be processed (case-insensitive)
+# Example: "Ziad,haseeb1111" or just "Ziad"
+# Leave empty to allow all callers
+ALLOWED_CALLERS = [c.strip() for c in _get("ALLOWED_CALLERS", "").split(",") if c.strip()]
 
 RECV_WINDOW = _get("RECV_WINDOW","5000")
 

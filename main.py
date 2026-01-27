@@ -12,7 +12,7 @@ from config import (
     POLL_SECONDS, POLL_JITTER_MAX, SIGNAL_UPDATE_INTERVAL_SEC,
     STATE_FILE, DRY_RUN, LOG_LEVEL,
     TP_SPLITS, TP_SPLITS_AUTO, DCA_QTY_MULTS, INITIAL_SL_PCT,
-    SIGNAL_PARSER_VERSION,
+    SIGNAL_PARSER_VERSION, ALLOWED_CALLERS,
     FOLLOW_TP_ENABLED, MAX_SL_DISTANCE_PCT, CAP_SL_DISTANCE_PCT
 )
 from bybit_v5 import BybitV5
@@ -21,6 +21,11 @@ from discord_reader import DiscordReader
 # Import signal parser based on version
 if SIGNAL_PARSER_VERSION == "v2":
     from signal_parser_v2 import parse_signal, parse_signal_update, signal_hash
+elif SIGNAL_PARSER_VERSION == "etc":
+    from signal_parser_etc import parse_signal as _parse_signal_etc, parse_signal_update, signal_hash, parse_dca_triggered
+    # Wrap parse_signal to always include allowed_callers
+    def parse_signal(text, quote="USDT"):
+        return _parse_signal_etc(text, quote, allowed_callers=ALLOWED_CALLERS)
 else:
     from signal_parser import parse_signal, parse_signal_update, signal_hash
 
@@ -63,6 +68,8 @@ def main():
     log.info("Discord → Bybit Bot (One-way)" + mode_str)
     log.info("="*58)
     log.info(f"Config: SIGNAL_PARSER={SIGNAL_PARSER_VERSION.upper()}")
+    if ALLOWED_CALLERS:
+        log.info(f"Config: ALLOWED_CALLERS={ALLOWED_CALLERS}")
     log.info(f"Config: CATEGORY={CATEGORY}, QUOTE={QUOTE}, LEVERAGE={LEVERAGE}x")
     log.info(f"Config: RISK_PCT={RISK_PCT}%, MAX_CONCURRENT={MAX_CONCURRENT_TRADES}, MAX_DAILY={MAX_TRADES_PER_DAY}")
     log.info(f"Config: POLL_SECONDS={POLL_SECONDS}, TC_MAX_LAG_SEC={TC_MAX_LAG_SEC}")
@@ -146,6 +153,52 @@ def main():
                     tr["exit_reason"] = "signal_cancelled"
                     tr["closed_ts"] = time.time()
                     log.info(f"✅ Trade {tr['symbol']} marked as cancelled")
+                    continue  # Skip other updates for this trade
+
+                # Check if trade was CLOSED by caller (ETC format: "TRADE CLOSED - x/y TPs hit")
+                # This triggers a market close of the position
+                if "TRADE CLOSED" in txt.upper() and tr.get("status") == "open":
+                    log.warning(f"📉 Signal CLOSED for {tr['symbol']} - closing position via market order")
+
+                    # Cancel all pending TP/DCA orders first
+                    engine._cancel_all_trade_orders(tr)
+
+                    # Close position with market order
+                    try:
+                        size, _ = engine.position_size_avg(tr["symbol"])
+                        if size > 0:
+                            # Determine close side (opposite of position)
+                            pos_side = tr.get("pos_side", "Long")
+                            close_side = "Sell" if pos_side == "Long" else "Buy"
+
+                            close_order = {
+                                "category": CATEGORY,
+                                "symbol": tr["symbol"],
+                                "side": close_side,
+                                "orderType": "Market",
+                                "qty": str(size),
+                                "reduceOnly": True,
+                                "timeInForce": "GTC",
+                            }
+
+                            if not DRY_RUN:
+                                resp = bybit.place_order(close_order)
+                                if resp.get("retCode") == 0:
+                                    log.info(f"✅ Position closed for {tr['symbol']} via market order")
+                                else:
+                                    log.error(f"Failed to close position: {resp}")
+                            else:
+                                log.info(f"[DRY_RUN] Would close {size} {tr['symbol']} with market order")
+                        else:
+                            log.info(f"Position already closed for {tr['symbol']}")
+                    except Exception as e:
+                        log.error(f"Error closing position for {tr['symbol']}: {e}")
+
+                    # Mark trade as closed
+                    tr["status"] = "closed"
+                    tr["exit_reason"] = "signal_closed"
+                    tr["closed_ts"] = time.time()
+                    log.info(f"✅ Trade {tr['symbol']} marked as closed (signal)")
                     continue  # Skip other updates for this trade
 
                 # Check if pending order should be cancelled (price already past TP1)
