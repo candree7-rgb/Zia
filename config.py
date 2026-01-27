@@ -112,10 +112,10 @@ TRAIL_ACTIVATE_ON_TP = _get_bool("TRAIL_ACTIVATE_ON_TP","true")
 DCA_QTY_MULTS = [float(x) for x in _get("DCA_QTY_MULTS","1.5").split(",") if x.strip()]
 
 # Timing
-POLL_SECONDS    = _get_int("POLL_SECONDS","10")  # Main loop interval - reduced for faster TP1 HIT detection
-POLL_JITTER_MAX = _get_int("POLL_JITTER_MAX","3")  # Reduced jitter for more consistent timing
-SIGNAL_UPDATE_INTERVAL_SEC = _get_int("SIGNAL_UPDATE_INTERVAL_SEC", "10")  # How often to re-check signals for pending trades (must be <= POLL_SECONDS)
-SIGNAL_UPDATE_INTERVAL_OPEN_SEC = _get_int("SIGNAL_UPDATE_INTERVAL_OPEN_SEC", "5")  # How often to re-check signals for OPEN trades (faster for TRADE CLOSED detection)
+POLL_SECONDS    = _get_int("POLL_SECONDS","15")
+POLL_JITTER_MAX = _get_int("POLL_JITTER_MAX","5")
+SIGNAL_UPDATE_INTERVAL_SEC = _get_int("SIGNAL_UPDATE_INTERVAL_SEC", "15")  # How often to re-check signals for pending trades
+SIGNAL_UPDATE_INTERVAL_OPEN_SEC = _get_int("SIGNAL_UPDATE_INTERVAL_OPEN_SEC", "7")  # How often to re-check signals for OPEN trades (faster for TRADE CLOSED detection)
 
 # Misc
 DRY_RUN     = _get_bool("DRY_RUN","true")
