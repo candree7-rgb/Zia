@@ -53,23 +53,31 @@ class DiscordReader:
         return collected
 
     def fetch_message(self, message_id: str) -> Optional[Dict[str, Any]]:
-        """Fetch a single message by ID. Returns None on error."""
+        """Fetch a single message by ID directly (not via 'around' which may be cached)."""
         try:
-            # Fetch messages around this ID and find the exact one
-            # Use limit=5 to ensure we get the target message
-            params = {"around": str(message_id), "limit": 5}
-            r = self._request_with_retry(
-                f"https://discord.com/api/v10/channels/{self.channel_id}/messages",
-                params
-            )
-            if r.status_code != 200:
-                return None
-            msgs = r.json() or []
-            for m in msgs:
-                if str(m.get("id")) == str(message_id):
-                    return m
-            # If exact match not found, return first message (might be the one)
-            return msgs[0] if msgs else None
+            # Use direct message endpoint to get fresh data (avoids Discord caching)
+            # GET /channels/{channel_id}/messages/{message_id}
+            url = f"https://discord.com/api/v10/channels/{self.channel_id}/messages/{message_id}"
+            for attempt in range(3):
+                try:
+                    r = requests.get(url, headers=self.headers, timeout=20)
+                    if r.status_code == 429:
+                        retry = 5.0
+                        try:
+                            retry = float((r.json() or {}).get("retry_after", 5))
+                        except Exception:
+                            pass
+                        time.sleep(retry + 0.25)
+                        continue
+                    if r.status_code == 200:
+                        return r.json()
+                    return None
+                except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+                    if attempt < 2:
+                        time.sleep(1)
+                        continue
+                    return None
+            return None
         except Exception:
             return None
 
@@ -114,4 +122,12 @@ class DiscordReader:
             footer = (e.get("footer") or {}).get("text")
             if footer:
                 parts.append(str(footer))
-        return "\n".join([p for p in parts if p]).strip()
+        raw = "\n".join([p for p in parts if p]).strip()
+        # Strip Discord markdown for cleaner pattern matching
+        # Remove: ** (bold), * (italic), ` (code), _ (underline), ~~ (strikethrough)
+        import re
+        clean = re.sub(r'\*\*|__', '', raw)  # Bold
+        clean = re.sub(r'\*|_', '', clean)   # Italic
+        clean = re.sub(r'`', '', clean)       # Code
+        clean = re.sub(r'~~', '', clean)      # Strikethrough
+        return clean

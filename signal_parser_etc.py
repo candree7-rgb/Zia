@@ -70,6 +70,12 @@ RE_TRADER = re.compile(
     re.I
 )
 
+# Signal by at end of message: "Signal by Ziad"
+RE_SIGNAL_BY = re.compile(
+    r"Signal\s+by\s+(\w+)",
+    re.I
+)
+
 # Status patterns to detect if trade is still valid for entry
 RE_CLOSED = re.compile(
     r"TRADE\s+CLOSED|closed\s+at\s+breakeven|TRADE\s+CANCELLED|⏳\s*closed",
@@ -110,17 +116,24 @@ def parse_signal(text: str, quote: str = "USDT", allowed_callers: List[str] = No
     side = "sell" if side_word == "SHORT" else "buy"
     symbol = f"{base}{quote_from_signal}"
 
-    # Parse caller for filtering
+    # Parse caller for filtering (try multiple patterns)
     caller = None
+    # 1. Try "Caller: Ziad" (in Notes section)
     mc = RE_CALLER.search(text)
     if mc:
         caller = mc.group(1)
 
-    # If no caller found in Notes, try Trader field
+    # 2. Try "Trader: Ziad" (next to Leverage)
     if not caller:
         mt = RE_TRADER.search(text)
         if mt:
             caller = mt.group(1)
+
+    # 3. Try "Signal by Ziad" (at end of message)
+    if not caller:
+        ms = RE_SIGNAL_BY.search(text)
+        if ms:
+            caller = ms.group(1)
 
     # Filter by allowed callers if specified
     if allowed_callers and len(allowed_callers) > 0:

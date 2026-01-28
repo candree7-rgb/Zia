@@ -9,7 +9,7 @@ from config import (
     BYBIT_API_KEY, BYBIT_API_SECRET, BYBIT_TESTNET, BYBIT_DEMO, RECV_WINDOW,
     CATEGORY, QUOTE, LEVERAGE, RISK_PCT,
     MAX_CONCURRENT_TRADES, MAX_TRADES_PER_DAY, TC_MAX_LAG_SEC,
-    POLL_SECONDS, POLL_JITTER_MAX, SIGNAL_UPDATE_INTERVAL_SEC,
+    POLL_SECONDS, POLL_JITTER_MAX, SIGNAL_UPDATE_INTERVAL_SEC, SIGNAL_UPDATE_INTERVAL_OPEN_SEC,
     STATE_FILE, DRY_RUN, LOG_LEVEL,
     TP_SPLITS, TP_SPLITS_AUTO, DCA_QTY_MULTS, INITIAL_SL_PCT,
     SIGNAL_PARSER_VERSION, ALLOWED_CALLERS,
@@ -127,6 +127,56 @@ def main():
                 if not txt:
                     log.warning(f"   {tr.get('symbol')}: Empty message text")
                     continue
+
+                # Check if TP1 already HIT or trade closed while entry still pending
+                # This catches fast moves where TP1 was reached before our entry triggered
+                # Patterns detected:
+                #   - "✅ TP1:" or "✅TP1"
+                #   - "TP1: ... HIT"
+                #   - "Final Price:" (trade already closed)
+                #   - "PROFIT TAKEN" (profit already taken)
+                #   - "TRADE CLOSED" (trade already closed - cancel pending)
+                if tr.get("status") == "pending":
+                    tp1_hit = False
+                    reason = "tp1_already_hit"
+
+                    # Check for checkmark before TP1
+                    if "✅ TP1" in txt or "✅TP1" in txt:
+                        tp1_hit = True
+                    # Check for "HIT" after TP1 value
+                    elif "TP1:" in txt.upper() and "HIT" in txt.upper():
+                        # Make sure HIT comes after TP1
+                        tp1_pos = txt.upper().find("TP1:")
+                        hit_pos = txt.upper().find("HIT")
+                        if hit_pos > tp1_pos:
+                            tp1_hit = True
+                    # Check for "Final Price" (means trade is closed)
+                    elif "FINAL PRICE" in txt.upper():
+                        tp1_hit = True
+                        reason = "trade_already_closed"
+                    # Check for "PROFIT TAKEN" (means profit was taken)
+                    elif "PROFIT TAKEN" in txt.upper():
+                        tp1_hit = True
+                        reason = "profit_already_taken"
+                    # Check for "TRADE CLOSED" on pending (signal closed before we entered)
+                    elif "TRADE CLOSED" in txt.upper():
+                        tp1_hit = True
+                        reason = "trade_already_closed"
+
+                    if tp1_hit:
+                        log.warning(f"⚠️ Signal already closed for {tr['symbol']} ({reason}) - cancelling pending entry")
+                        entry_oid = tr.get("entry_order_id")
+                        if entry_oid and entry_oid != "DRY_RUN":
+                            try:
+                                engine.cancel_entry(tr["symbol"], entry_oid)
+                                log.info(f"🗑️ Cancelled entry order for {tr['symbol']} ({reason})")
+                            except Exception as e:
+                                log.debug(f"Could not cancel entry: {e}")
+                        tr["status"] = "cancelled"
+                        tr["exit_reason"] = reason
+                        tr["closed_ts"] = time.time()
+                        log.info(f"✅ Trade {tr['symbol']} cancelled - {reason}")
+                        continue  # Skip other updates for this trade
 
                 # Check if trade was CANCELLED in Discord signal
                 # This handles: "❌ TRADE CANCELLED", "TRADE CANCELLED", "Trade closed without entry"
@@ -424,7 +474,10 @@ def main():
             engine.log_daily_stats()          # Log stats once per day
 
             # Check for signal updates (SL/TP/DCA changes in Discord)
-            if time.time() - last_signal_update_check > SIGNAL_UPDATE_INTERVAL_SEC:
+            # Use faster interval if there are OPEN trades (for quick TRADE CLOSED detection)
+            has_open_trades = any(tr.get("status") == "open" for tr in st.get("open_trades", {}).values())
+            update_interval = SIGNAL_UPDATE_INTERVAL_OPEN_SEC if has_open_trades else SIGNAL_UPDATE_INTERVAL_SEC
+            if time.time() - last_signal_update_check > update_interval:
                 check_signal_updates()
                 last_signal_update_check = time.time()
 
