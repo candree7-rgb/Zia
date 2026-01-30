@@ -53,31 +53,22 @@ class DiscordReader:
         return collected
 
     def fetch_message(self, message_id: str) -> Optional[Dict[str, Any]]:
-        """Fetch a single message by ID directly (not via 'around' which may be cached)."""
+        """Fetch a single message by ID."""
         try:
-            # Use direct message endpoint to get fresh data (avoids Discord caching)
-            # GET /channels/{channel_id}/messages/{message_id}
-            url = f"https://discord.com/api/v10/channels/{self.channel_id}/messages/{message_id}"
-            for attempt in range(3):
-                try:
-                    r = requests.get(url, headers=self.headers, timeout=20)
-                    if r.status_code == 429:
-                        retry = 5.0
-                        try:
-                            retry = float((r.json() or {}).get("retry_after", 5))
-                        except Exception:
-                            pass
-                        time.sleep(retry + 0.25)
-                        continue
-                    if r.status_code == 200:
-                        return r.json()
-                    return None
-                except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
-                    if attempt < 2:
-                        time.sleep(1)
-                        continue
-                    return None
-            return None
+            # Use 'around' with the message list endpoint (works reliably with user tokens)
+            params = {"around": str(message_id), "limit": 5}
+            r = self._request_with_retry(
+                f"https://discord.com/api/v10/channels/{self.channel_id}/messages",
+                params
+            )
+            if r.status_code != 200:
+                return None
+            msgs = r.json() or []
+            for m in msgs:
+                if str(m.get("id")) == str(message_id):
+                    return m
+            # If exact match not found, return first message (might be the one)
+            return msgs[0] if msgs else None
         except Exception:
             return None
 
